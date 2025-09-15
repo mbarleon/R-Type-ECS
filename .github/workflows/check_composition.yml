@@ -20,7 +20,7 @@ jobs:
       matrix:
         os: ${{ fromJSON(vars.ENABLE_MACOS == 'true'
           && '["ubuntu-latest","windows-latest","macos-latest"]'
-          || '["ubuntu-latest","windows-latest"]') }} 
+          || '["ubuntu-latest","windows-latest"]') }}
 
     steps:
       - name: Checkout repository
@@ -175,7 +175,7 @@ jobs:
           LIBRARY_BASENAME: ${{ vars.LIBRARY_BASENAME }}
         run: |
           $name = if ([string]::IsNullOrWhiteSpace($env:LIBRARY_BASENAME)) { "r-type_ecs" } else { $env:LIBRARY_BASENAME }
-          $dll = "$name.dll"
+          $dll = "lib$name.dll"
           if (Test-Path -Path $dll -PathType Leaf) {
             Write-Host "::notice file=$dll::Shared library found (.dll)."
             exit 0
