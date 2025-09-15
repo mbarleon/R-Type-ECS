@@ -26,8 +26,8 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 file(GLOB_RECURSE SRC_R_TYPE_ECS "src/*.cpp")
 
 add_library(r-type_ecs SHARED ${SRC_R_TYPE_ECS})
-target_include_directories(r-type_ecs PRIVATE
-  ${CMAKE_SOURCE_DIR}/include
+target_include_directories(r-type_ecs PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 target_compile_definitions(r-type_ecs PRIVATE R_TYPE_ECS_BUILD=1)
 
