@@ -1,0 +1,185 @@
+name: rtype-ecs-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check_program_compilation:
+    name: Build & check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(vars.ENABLE_MACOS == 'true'
+          && '["ubuntu-latest","windows-latest","macos-latest"]'
+          || '["ubuntu-latest","windows-latest"]') }} 
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show runner info
+        run: |
+          echo "Runner OS: $RUNNER_OS"
+          uname -a || true
+          bash --version | head -n 1 || true
+
+      # ---------- LINUX ----------
+      - name: Ensure cmake & ninja (Ubuntu)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: |
+          set -e
+          HAVE_CMAKE=0
+          HAVE_NINJA=0
+          command -v cmake >/dev/null 2>&1 && HAVE_CMAKE=1
+          command -v ninja >/dev/null 2>&1 && HAVE_NINJA=1
+
+          if [ "$HAVE_CMAKE" = 1 ] && [ "$HAVE_NINJA" = 1 ]; then
+            echo "::notice::cmake and ninja already available:"
+            cmake --version | head -n1
+            ninja --version
+            exit 0
+          fi
+
+          echo "::notice::Installing missing tools via apt (noninteractive, no recommends)…"
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get -yq update
+          sudo apt-get -yq install --no-install-recommends \
+          ${HAVE_CMAKE:+} ${HAVE_CMAKE:+"ninja-build"} \
+          ${HAVE_NINJA:+} ${HAVE_NINJA:+"cmake"}
+          sudo rm -rf /var/lib/apt/lists/*
+
+          cmake --version | head -n1
+          ninja --version
+
+      - name: Check & run build.sh (Ubuntu)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: |
+          test -f build.sh || { echo "::error ::/!\\ WARNING NO build.sh FOUND /!\\"; exit 84; }
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Check shared library (Ubuntu)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        env:
+          LIBRARY_BASENAME: ${{ vars.LIBRARY_BASENAME }}
+        run: |
+          name="${LIBRARY_BASENAME:-r-type_ecs}"
+          cand1="lib${name}.so"
+          cand2="${name}.so"
+          for f in "$cand1" "$cand2"; do
+            if [ -f "$f" ]; then
+              echo "::notice file=$f::Shared library found."
+              exit 0
+            fi
+          done
+          echo "::error ::Shared library missing (checked '$cand1' and '$cand2')."
+          ls -la
+          exit 84
+
+      # ---------- MACOS ----------
+      - name: Ensure cmake & ninja (macOS)
+        if: ${{ matrix.os == 'macos-latest' }}
+        run: |
+          set -e
+          HAVE_CMAKE=0
+          HAVE_NINJA=0
+          command -v cmake >/dev/null 2>&1 && HAVE_CMAKE=1
+          command -v ninja >/dev/null 2>&1 && HAVE_NINJA=1
+          if [ "$HAVE_CMAKE" = 1 ] && [ "$HAVE_NINJA" = 1 ]; then
+            echo "::notice::cmake and ninja already available:"
+            cmake --version | head -n1
+            ninja --version
+            exit 0
+          fi
+
+          if ! command -v brew >/dev/null 2>&1; then
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            eval "$(/opt/homebrew/bin/brew shellenv)" || true
+            eval "$(/usr/local/bin/brew shellenv)" || true
+          fi
+          brew update
+          brew install cmake ninja
+          echo "::notice::$(cmake --version | head -n1)"
+          echo "::notice::$(ninja --version)"
+
+      - name: Check & run build.sh (macOS)
+        if: ${{ matrix.os == 'macos-latest' }}
+        run: |
+          test -f build.sh || { echo "::error ::/!\\ WARNING NO build.sh FOUND /!\\"; exit 84; }
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Check shared library (macOS)
+        if: ${{ matrix.os == 'macos-latest' }}
+        env:
+          LIBRARY_BASENAME: ${{ vars.LIBRARY_BASENAME }}
+        run: |
+          name="${LIBRARY_BASENAME:-r-type_ecs}"
+          cand1="lib${name}.dylib"
+          cand2="${name}.dylib"
+          for f in "$cand1" "$cand2"; do
+            if [ -f "$f" ]; then
+              echo "::notice file=$f::Shared library found."
+              exit 0
+            fi
+          done
+          echo "::error ::Shared library missing (checked '$cand1' and '$cand2')."
+          ls -la
+          exit 84
+
+      # ---------- WINDOWS ----------
+      - name: Ensure cmake & ninja (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+            choco install cmake --yes --no-progress --installargs "ADD_CMAKE_TO_PATH=System"
+          }
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            # Package id is 'ninja'
+            choco install ninja --yes --no-progress
+          }
+          cmake --version | Select-Object -First 1
+          ninja  --version
+
+      - name: Run build.ps1 if present, else build.sh (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          if (Test-Path ./build.ps1) {
+            Write-Host "::notice file=build.ps1::Running build.ps1…"
+            pwsh -NoProfile -ExecutionPolicy Bypass -File ./build.ps1
+            if ($LASTEXITCODE -ne 0) { exit 84 }
+          } elseif (Test-Path ./build.sh) {
+            Write-Host "::notice file=build.sh::Running build.sh via Git Bash…"
+            bash ./build.sh
+            if ($LASTEXITCODE -ne 0) { exit 84 }
+          } else {
+            Write-Host "::error ::/!\ NO build.ps1 OR build.sh FOUND /!\"
+            exit 84
+          }
+
+      - name: Check shared library (.dll) on Windows
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        env:
+          LIBRARY_BASENAME: ${{ vars.LIBRARY_BASENAME }}
+        run: |
+          $name = if ([string]::IsNullOrWhiteSpace($env:LIBRARY_BASENAME)) { "r-type_ecs" } else { $env:LIBRARY_BASENAME }
+          $dll = "$name.dll"
+          if (Test-Path -Path $dll -PathType Leaf) {
+            Write-Host "::notice file=$dll::Shared library found (.dll)."
+            exit 0
+          }
+          Write-Host "::error file=$dll::Shared library not found."
+          Get-ChildItem -Recurse -File | Select-Object -First 200 | Format-Table FullName,Length,LastWriteTime
+          exit 84

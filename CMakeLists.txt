@@ -1,0 +1,74 @@
+cmake_minimum_required(VERSION 3.16)
+project(r-type_ecs LANGUAGES CXX VERSION 0.0.1)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+if (NOT MSVC)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+endif()
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+
+include(ProcessorCount)
+ProcessorCount(N)
+if(NOT N EQUAL 0)
+  set(CMAKE_BUILD_PARALLEL_LEVEL ${N})
+endif()
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+file(GLOB_RECURSE SRC_R_TYPE_ECS "src/*.cpp")
+
+add_library(r-type_ecs SHARED ${SRC_R_TYPE_ECS})
+target_include_directories(r-type_ecs PRIVATE
+  ${CMAKE_SOURCE_DIR}/include
+)
+target_compile_definitions(r-type_ecs PRIVATE R_TYPE_ECS_BUILD=1)
+
+function(enable_strict_warnings tgt)
+  if (MSVC)
+    target_compile_options(${tgt} PRIVATE
+      /W4
+      /WX
+      /permissive-
+      /EHsc
+      /Zc:__cplusplus
+    )
+  elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+    target_compile_options(${tgt} PRIVATE
+      -Wall -Wextra -Werror -Wpedantic
+      -Wconversion -Wsign-conversion
+      -Wshadow -Wnull-dereference
+      -Wundef -Wuninitialized
+      -Wcast-align -Wcast-qual
+      -Wswitch-default
+      -Wdouble-promotion
+      -Wformat=2
+      -Wwrite-strings
+    )
+  else()
+    target_compile_options(${tgt} PRIVATE
+      -Wall -Wextra -Werror -Wpedantic
+      -Wconversion -Wsign-conversion
+      -Wshadow -Wnull-dereference
+      -Wundef -Wuninitialized -Winit-self
+      -Wredundant-decls
+      -Wcast-align -Wcast-qual
+      -Wmissing-declarations -Wswitch-default
+      -Wdouble-promotion -Wformat=2 -Wwrite-strings
+    )
+  endif()
+endfunction()
+
+enable_strict_warnings(r-type_ecs)
+
+option(ENABLE_DEBUG "Enable debug macros and flags" OFF)
+if(ENABLE_DEBUG)
+  target_compile_definitions(r-type_ecs PRIVATE r-type_ecs_DEBUG=1)
+endif()
